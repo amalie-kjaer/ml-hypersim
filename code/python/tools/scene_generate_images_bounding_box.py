@@ -82,6 +82,7 @@ if not os.path.exists(out_preview_dir): os.makedirs(out_preview_dir)
 
 in_filenames = [ os.path.basename(f) for f in sort(glob.glob(in_rgb_jpg_files)) ]
 
+# for each frame:
 for in_filename in in_filenames:
 
     in_filename_ids = [int(t) for t in in_filename.split(".") if t.isdigit()]
@@ -145,6 +146,7 @@ for in_filename in in_filenames:
     bottom = -f_h
     top    = f_h
 
+    # M is the prjection matrix that transforms from camera view to clip view (partially normalised coords) 
     M_proj      = matrix(zeros((4,4)))
     M_proj[0,0] = (2.0*near)/(right - left)
     M_proj[1,1] = (2.0*near)/(top - bottom)
@@ -183,6 +185,7 @@ for in_filename in in_filenames:
     fragments_p2_screen = []
     fragments_color     = []
 
+    # for each bounding box within the current frame:
     for sii in unique(mesh_objects_sii):
         if sii == -1:
             continue
@@ -197,7 +200,7 @@ for in_filename in in_filenames:
 
         def transform_point_screen_from_world(p_world):
             p_cam      = t_cam_from_world + R_cam_from_world*p_world
-            p_cam_     = matrix(r_[ p_cam.A1, 1 ]).T
+            p_cam_     = matrix(r_[ p_cam.A1, 1 ]).T # homogeneous coords of the point in cam coords
             p_clip     = M_proj*p_cam_
             p_ndc      = p_clip/p_clip[3]
             p_ndc_     = p_ndc.A1
@@ -252,7 +255,7 @@ for in_filename in in_filenames:
             # HACK: strictly speaking this frustum culling test is incorrect, because it will discard lines
             # that pass through the frustum but whose endpoints are both outside the frustum; but this is a
             # rare case, and frustum culling in this way is a lot faster, so we do it anyway
-            if p1_inside_frustum or p2_inside_frustum:
+            if p1_inside_frustum or p2_inside_frustum: # keep line if either of its endpoints is in the image?
                 num_pixels_per_line = linalg.norm(p2_screen - p1_screen)
                 num_fragments_per_line = int(ceil(num_pixels_per_line*num_fragments_per_pixel))
                 t = linspace(0,1,num_fragments_per_line+1)
@@ -385,6 +388,8 @@ for in_filename in in_filenames:
 
     print("[HYPERSIM: SCENE_GENERATE_IMAGES_BOUNDING_BOX] Kept " + str(num_fragments) + " fragments after depth test...")
 
+    # add bb label here
+    # can add plotting bb centres here too  
     img = rgb_color
     img_pil = PIL.Image.fromarray(img)
     draw = PIL.ImageDraw.Draw(img_pil)
