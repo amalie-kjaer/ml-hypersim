@@ -13,11 +13,9 @@ import h5py
 import csv
 from torch import torch
 from tqdm import tqdm
-
 import os.path as osp
-
 import torch
-from torch_geometric.data import Dataset, download_url
+from torch_geometric.data import Dataset
 
 
 class HypersimDataset(Dataset):
@@ -41,7 +39,6 @@ class HypersimDataset(Dataset):
         pass
 
     def process(self):
-        # TODO change line below using the root directory
         idx = 0
 
         download_dir = r".\contrib\99991\downloads"
@@ -69,25 +66,21 @@ class HypersimDataset(Dataset):
             bb_labels, bb_error = self._assign_labels(mesh_objects_sii, mesh_objects_si, metadata_objects, self.nyu_labels, bb_pos)
             
             for camera_name in camera_names:
-                preview_files_dir = os.path.join(images_dir, "scene_" + camera_name + "_final_preview")
                 geometry_files_dir = os.path.join(images_dir, "scene_" + camera_name + "_geometry_hdf5")                
 
-                tonemap_files_dir = os.path.join(images_dir, "scene_" + camera_name + "_final_preview", "frame.*.tonemap.jpg")
                 segmentation_files_dir = os.path.join(images_dir, "scene_" + camera_name + "_geometry_hdf5", "frame.*.semantic_instance.hdf5")
-                filenames_tonemap = [ os.path.basename(f) for f in sort(glob.glob(tonemap_files_dir)) ]
                 filenames_segmentation = [ os.path.basename(f) for f in sort(glob.glob(segmentation_files_dir)) ]
-                n_frames = len(filenames_tonemap)
+                n_frames = len(filenames_segmentation)
 
                 threshold = 1.5
                 distance_mask = self._calculate_distance(threshold, a2m, bb_pos, bb_error)
 
-                for tonemap_file, segmentation_file, frame_id in zip(filenames_tonemap[:n_frames], filenames_segmentation[:n_frames], arange(n_frames)):
-                    tonemap_dir = os.path.join(preview_files_dir, tonemap_file)
+                for segmentation_file, frame_id in zip(filenames_segmentation[:n_frames], arange(n_frames)):
                     segmentation_dir =  os.path.join(geometry_files_dir, segmentation_file)
 
                     # Load tonemap and segmentation for current frame
                     try:
-                        tonemap, segmentation = self._import_frame(tonemap_dir, segmentation_dir)
+                        segmentation = self._import_frame(segmentation_dir)
                     except:
                         continue
 
@@ -95,7 +88,6 @@ class HypersimDataset(Dataset):
                     bb_in_sample = unique(segmentation)
                     if bb_in_sample[0] == -1:
                         bb_in_sample = bb_in_sample[1:] # discard -1 label (pixels in segmentation map with unidentified BB)
-                    n_bb_in_sample = bb_in_sample.shape[0]
 
                     # Construct adjacency matrix
                     adjacency_matrix = self._construct_adjacency_matrix(n_bb, bb_in_sample, distance_mask)
@@ -165,7 +157,7 @@ class HypersimDataset(Dataset):
         y = torch.tensor(scene_metadata_clean_nocam_y[:,4].astype(int))
         return y, scene_metadata_clean_nocam_y
     
-    def _assign_labels(self, mesh_objects_sii, mesh_objects_si, metadata_objects, nyu_labels, bb_pos):
+    def _assign_labels(self, mesh_objects_sii, mesh_objects_si, bb_pos):
         bb_labels = []
         bb_error = []
         n_bb = bb_pos.shape[0] - 1
@@ -174,7 +166,6 @@ class HypersimDataset(Dataset):
             lowlvl_instances_in_current_bb = np.where(mesh_objects_sii == i+1)[0]
             if lowlvl_instances_in_current_bb.size > 0:
                 nyu_id = mesh_objects_si[lowlvl_instances_in_current_bb[0]]
-                # bb_labels.append(nyu_labels[int(nyu_id[i])][1])
                 bb_labels.append(nyu_id)
             else:
                 bb_error.append(i+1)
@@ -239,13 +230,12 @@ class HypersimDataset(Dataset):
         with h5py.File(camera_rot_dir, "r") as f: camera_rot_all = f['dataset'][:]
         return camera_pos_all, camera_rot_all
     
-    def _import_frame(self, tonemap_dir, segmentation_dir):
-        tonemap = imread(tonemap_dir)
+    def _import_frame(self, segmentation_dir):
         with h5py.File(segmentation_dir, "r") as f: segmentation = f['dataset'][:]
-        return tonemap, segmentation
+        return segmentation
 
     def len(self):
-        return 72233
+        return 61936
     
     def get(self, idx):
         data = torch.load(osp.join(self.processed_dir, f'data_{idx}.pt'))
