@@ -1,21 +1,13 @@
 import numpy as np
-from matplotlib import pyplot as plt
-from PIL import Image
 from numpy import genfromtxt
 from scipy.spatial import distance
-from torch_geometric.data import Data
 import os
 import glob
-from pylab import *
-from matplotlib.pyplot import imread
-import networkx as nx
 import h5py
 import csv
-from torch import torch
 from tqdm import tqdm
-import os.path as osp
 import torch
-from torch_geometric.data import Dataset
+from torch_geometric.data import Dataset, Data
 
 
 class HypersimDataset(Dataset):
@@ -116,7 +108,7 @@ class HypersimDataset(Dataset):
 
                         # Construct Data object
                         data = Data(edge_index=edge_index, x=x, y=y_scene)
-                        torch.save(data, osp.join(self.processed_dir, f'data_{idx}.pt'))
+                        torch.save(data, os.path.join(self.processed_dir, f'data_{idx}.pt'))
 
                         with open(csv_path, 'a', newline='') as csvfile_append:
                             writer = csv.writer(csvfile_append)
@@ -238,7 +230,7 @@ class HypersimDataset(Dataset):
         return 61936
     
     def get(self, idx):
-        data = torch.load(osp.join(self.processed_dir, f'data_{idx}.pt'))
+        data = torch.load(os.path.join(self.processed_dir, f'data_{idx}.pt'))
         return data
 
 

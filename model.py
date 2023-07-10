@@ -5,10 +5,11 @@ from torch_geometric.nn import GCNConv
 from torch_geometric.nn import global_mean_pool
 
 class GCN(torch.nn.Module):
-    def __init__(self, hidden_channels):
+    def __init__(self, feature_size, hidden_channels):
         super(GCN, self).__init__()
         torch.manual_seed(12345)
-        self.conv1 = GCNConv(dataset.num_node_features, hidden_channels)
+        # feature_size = dataset.num_node_features
+        self.conv1 = GCNConv(feature_size, hidden_channels)
         self.conv2 = GCNConv(hidden_channels, hidden_channels)
         self.conv3 = GCNConv(hidden_channels, hidden_channels)
         self.lin = Linear(hidden_channels, 24) # 24 possible output labels
