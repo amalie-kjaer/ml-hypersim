@@ -11,11 +11,19 @@ from torch_geometric.data import Dataset, Data
 
 
 class HypersimDataset(Dataset):
-    def __init__(self, root, transform=None, pre_transform=None, pre_filter=None):
-        self.scene_labels = genfromtxt(os.path.join("evermotion_dataset", "analysis", "metadata_camera_trajectories.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)[1:,[0,7,8]]
-        self.nyu_labels = genfromtxt(os.path.join("code", "cpp", "tools", "scene_annotation_tool", "semantic_label_descs.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)
-
+    def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, ignore_rare=False):
         super().__init__(root, transform, pre_transform, pre_filter)
+
+        self.nyu_labels = genfromtxt(os.path.join("code", "cpp", "tools", "scene_annotation_tool", "semantic_label_descs.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)
+        self.y_labels, self.scene_metadata = self._get_y()
+        self.scene_names = np.unique(self.scene_metadata[:,2])        
+        
+        self.ignore_rare = ignore_rare
+        if self.ignore_rare:
+            self.graphs = [f'data_{idx}.pt' for idx in range(self.len())]
+            self.graphs = [graph for graph in self.graphs if self._is_valid(graph)]
+
+        self.class_mapping = {1: 0, 2: 1, 8: 2, 11: 3, 12: 4, 18: 5}
     
     @property
     def raw_file_names(self):
@@ -34,7 +42,6 @@ class HypersimDataset(Dataset):
         idx = 0
 
         download_dir = r".\contrib\99991\downloads"
-        y, scene_metadata = self._get_y(self.scene_labels)
 
         csv_path = os.path.join(self.processed_dir, 'data_info.csv')
         with open(csv_path, 'w', newline='') as csvfile:
@@ -104,7 +111,7 @@ class HypersimDataset(Dataset):
                         x = torch.tensor(np.array(bb_labels_in_sample)) # indexing starts at 0
 
                         # Get relevant graph label
-                        y_scene = y[np.where(scene_name == scene_metadata[:,0])]
+                        y_scene = self.y_labels[np.where(scene_name == self.scene_metadata[:,0])]
 
                         # Construct Data object
                         data = Data(edge_index=edge_index, x=x, y=y_scene)
@@ -116,19 +123,22 @@ class HypersimDataset(Dataset):
 
                         idx += 1
 
-    def _get_y(self, scene_labels):
+    def _get_y(self):
+        scene_labels = genfromtxt(os.path.join("evermotion_dataset", "analysis", "metadata_camera_trajectories.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)[1:,[0,7,8]]
+        
+        # Clean up first column (split scene and camera number)
         scene_names = [y[:-7] for y in scene_labels[:,0]]
         camera_names = [y[-6:] for y in scene_labels[:,0]]
         scene_metadata = np.c_[scene_names, camera_names, scene_labels[:,1:]]
 
-        # Remove camera views annotated as 'BAD' in metadata file
+        # Remove camera views annotated as 'BAD' or 'OUTSIDE' in metadata file
         remove = []
         for i, s in enumerate(scene_metadata[:,2]):
             if 'OUTSIDE' in s:
                 remove.append(i)
         scene_metadata_clean = np.delete(scene_metadata, np.array(remove), axis=0)
 
-        # Remove duplicate scene annotations (different cameras in same scene have same label)
+        # Remove duplicate scene annotations (different cameras within the same scene still have same label)
         remove = []
         scene = None
         for i, row in enumerate(scene_metadata_clean):
@@ -142,7 +152,7 @@ class HypersimDataset(Dataset):
         # Assign integer to each scene label (instead of string)
         scene_ids = np.zeros_like(scenes, dtype=int)
         for i, y_scene in enumerate(scene_metadata_clean_nocam[:,2]):
-            y_id = np.where(unique(scene_metadata_clean_nocam[:,2]) == y_scene)
+            y_id = np.where(np.unique(scene_metadata_clean_nocam[:,2]) == y_scene)
             scene_ids[i] = y_id[0]
 
         scene_metadata_clean_nocam_y = np.concatenate((scene_metadata_clean_nocam, scene_ids[:, np.newaxis]), axis=1)
@@ -226,13 +236,27 @@ class HypersimDataset(Dataset):
         with h5py.File(segmentation_dir, "r") as f: segmentation = f['dataset'][:]
         return segmentation
 
+    def _is_valid(self, filename):
+        data = torch.load(os.path.join(self.processed_dir, filename))
+        y = data.y.item()
+        return y in [1, 2, 8, 11, 12, 18] # only keep scenes with frequency 20 or more
+    
+    def _update_label(self, data):
+        old_label = data.y.item()
+        new_label = self.class_mapping[old_label]
+        data.y = torch.tensor([new_label], dtype=torch.long)
+    
     def len(self):
         return 61936
     
     def get(self, idx):
-        data = torch.load(os.path.join(self.processed_dir, f'data_{idx}.pt'))
+        if self.ignore_rare:
+            filename = self.graphs[idx]
+            data = torch.load(os.path.join(self.processed_dir, filename))
+            self._update_label(data)
+        else:
+            data = torch.load(os.path.join(self.processed_dir, f'data_{idx}.pt'))
         return data
-
 
 if __name__ == "__main__":
     dataset = HypersimDataset(r'C:\Users\amali\Documents\ds_research\ml-hypersim')
