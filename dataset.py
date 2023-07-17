@@ -11,7 +11,7 @@ from torch_geometric.data import Dataset, Data
 
 
 class HypersimDataset(Dataset):
-    def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, ignore_rare=False):
+    def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, ignore_rare=False, presaved_graphs):
         super().__init__(root, transform, pre_transform, pre_filter)
 
         self.nyu_labels = genfromtxt(os.path.join("code", "cpp", "tools", "scene_annotation_tool", "semantic_label_descs.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)
@@ -20,8 +20,11 @@ class HypersimDataset(Dataset):
         
         self.ignore_rare = ignore_rare
         if self.ignore_rare:
-            self.graphs = [f'data_{idx}.pt' for idx in range(self.len())]
-            self.graphs = [graph for graph in self.graphs if self._is_valid(graph)]
+            if presaved_graphs:
+                self.graphs = presaved_graphs
+            else:
+                self.graphs = [f'data_{idx}.pt' for idx in range(self.len())]
+                self.graphs = [graph for graph in self.graphs if self._is_valid(graph)]
 
         self.class_mapping = {1: 0, 2: 1, 8: 2, 11: 3, 12: 4, 18: 5}
     
