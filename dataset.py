@@ -11,7 +11,7 @@ from torch_geometric.data import Dataset, Data
 
 
 class HypersimDataset(Dataset):
-    def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, ignore_rare=False, presaved_graphs):
+    def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, ignore_rare=False, presaved_graphs=None):
         super().__init__(root, transform, pre_transform, pre_filter)
 
         self.nyu_labels = genfromtxt(os.path.join("code", "cpp", "tools", "scene_annotation_tool", "semantic_label_descs.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)
