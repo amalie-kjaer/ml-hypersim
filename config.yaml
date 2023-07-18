@@ -1,5 +1,6 @@
 [path]
 download_path: ./contrib/99991/downloads/
+processed_path: ./processed
 
 [dataset]
 dataset_type_help: dataset_full, dataset_small, dataset_small_balanced

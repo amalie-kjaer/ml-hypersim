@@ -14,8 +14,9 @@ class HypersimDataset(Dataset):
         self.config = load_config()
         self.nyu_labels = np.genfromtxt(os.path.join("code", "cpp", "tools", "scene_annotation_tool", "semantic_label_descs.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)
         self.y_labels, self.scene_metadata, self.scene_metadata_w_cams = self._get_y()
-        self.scene_names = np.unique(self.scene_metadata[:,2])        
-        
+        self.scene_names = np.unique(self.scene_metadata[:,2])
+        self.processed_dir = self.config['path']['processed_path']
+
         if classes:
 
             self.classes = classes
@@ -43,6 +44,7 @@ class HypersimDataset(Dataset):
         pass
 
     def process(self):
+        print('PROCESSING FILES...')
         idx = 0
 
         download_dir = self.config['path']['download_path']
