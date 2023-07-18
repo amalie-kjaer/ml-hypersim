@@ -1,0 +1,30 @@
+[path]
+download_path: ./contrib/99991/downloads/
+
+[dataset]
+dataset_type_help: dataset_full, dataset_small, dataset_small_balanced
+dataset_type: dataset_small_balanced
+# Dataset_small:
+classes: 1, 2, 8, 11, 12, 18
+# Dataset_small_balanced:
+samples_per_class: 10
+
+[datamodule]
+batch_size: 64
+num_workers: 1
+
+[model]
+model_name_help: GCN
+model_name: GCN
+hidden_channels: 16
+optimizer: Adam
+lr: 0.01
+criterion: CrossEntropyLoss
+
+[trainer]
+epochs: 10
+
+[wandb]
+log: False
+project_name: ml_hypersim
+run_name: test000

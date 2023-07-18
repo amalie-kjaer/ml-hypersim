@@ -1,33 +1,32 @@
 import numpy as np
-from numpy import genfromtxt
-from scipy.spatial import distance
 import os
 import glob
 import h5py
 import csv
-from tqdm import tqdm
 import torch
+from scipy.spatial import distance
+from tqdm import tqdm
 from torch_geometric.data import Dataset, Data
 
-
 class HypersimDataset(Dataset):
-    def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, ignore_rare=False, presaved_graphs=None):
-        super().__init__(root, transform, pre_transform, pre_filter)
-
-        self.nyu_labels = genfromtxt(os.path.join("code", "cpp", "tools", "scene_annotation_tool", "semantic_label_descs.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)
-        self.y_labels, self.scene_metadata = self._get_y()
+    def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, classes=False, presaved_graphs=None):
+        self.nyu_labels = np.genfromtxt(os.path.join("code", "cpp", "tools", "scene_annotation_tool", "semantic_label_descs.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)
+        self.y_labels, self.scene_metadata, self.scene_metadata_w_cams = self._get_y()
         self.scene_names = np.unique(self.scene_metadata[:,2])        
         
-        self.ignore_rare = ignore_rare
-        if self.ignore_rare:
+        if classes:
+
+            self.classes = classes
             if presaved_graphs:
                 self.graphs = presaved_graphs
             else:
                 self.graphs = [f'data_{idx}.pt' for idx in range(self.len())]
                 self.graphs = [graph for graph in self.graphs if self._is_valid(graph)]
 
-        self.class_mapping = {1: 0, 2: 1, 8: 2, 11: 3, 12: 4, 18: 5}
-    
+            self.class_mapping = {class_id: index for index, class_id in enumerate(classes)}
+        
+        super().__init__(root, transform, pre_transform, pre_filter)
+
     @property
     def raw_file_names(self):
         download_dir = r".\contrib\99991\downloads"
@@ -58,7 +57,7 @@ class HypersimDataset(Dataset):
             images_dir = os.path.join(scene_dir, "images")
             detail_dir = os.path.join(scene_dir, "_detail")
             n_cams = len(glob.glob(detail_dir + "/*/"))-1
-            camera_names = ["cam_0" + str(n) for n in arange(n_cams)]
+            camera_names = ["cam_0" + str(n) for n in np.arange(n_cams)]
 
             try:
                 bb_pos, mesh_objects_si, mesh_objects_sii, metadata_objects, a2m = self._import_scene(scene_name, scene_dir)
@@ -71,23 +70,23 @@ class HypersimDataset(Dataset):
                 geometry_files_dir = os.path.join(images_dir, "scene_" + camera_name + "_geometry_hdf5")                
 
                 segmentation_files_dir = os.path.join(images_dir, "scene_" + camera_name + "_geometry_hdf5", "frame.*.semantic_instance.hdf5")
-                filenames_segmentation = [ os.path.basename(f) for f in sort(glob.glob(segmentation_files_dir)) ]
+                filenames_segmentation = [ os.path.basename(f) for f in np.sort(glob.glob(segmentation_files_dir)) ]
                 n_frames = len(filenames_segmentation)
 
                 threshold = 1.5
                 distance_mask = self._calculate_distance(threshold, a2m, bb_pos, bb_error)
 
-                for segmentation_file, frame_id in zip(filenames_segmentation[:n_frames], arange(n_frames)):
+                for segmentation_file, frame_id in zip(filenames_segmentation[:n_frames], np.arange(n_frames)):
                     segmentation_dir =  os.path.join(geometry_files_dir, segmentation_file)
 
-                    # Load tonemap and segmentation for current frame
+                    # Load segmentation for current frame
                     try:
                         segmentation = self._import_frame(segmentation_dir)
                     except:
                         continue
 
                     # Select BB that are present in current frame
-                    bb_in_sample = unique(segmentation)
+                    bb_in_sample = np.unique(segmentation)
                     if bb_in_sample[0] == -1:
                         bb_in_sample = bb_in_sample[1:] # discard -1 label (pixels in segmentation map with unidentified BB)
 
@@ -101,7 +100,7 @@ class HypersimDataset(Dataset):
                     # Filter out graphs that have 0 edges (either because no objects detected or objects far apart)
                     if edge_index_np.size > 0:
 
-                        nodes_present = unique(edge_index_np) # refers to BB number, indexing starts at 0
+                        nodes_present = np.unique(edge_index_np) # refers to BB number, indexing starts at 0
                         new_idx = []
                         for node0, node1 in edge_index_np:
                             new_node0 = np.where(node0 == nodes_present)[0][0]
@@ -127,19 +126,27 @@ class HypersimDataset(Dataset):
                         idx += 1
 
     def _get_y(self):
-        scene_labels = genfromtxt(os.path.join("evermotion_dataset", "analysis", "metadata_camera_trajectories.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)[1:,[0,7,8]]
+        scene_labels = np.genfromtxt(os.path.join("evermotion_dataset", "analysis", "metadata_camera_trajectories.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)[1:,[0,7,8]]
         
         # Clean up first column (split scene and camera number)
         scene_names = [y[:-7] for y in scene_labels[:,0]]
         camera_names = [y[-6:] for y in scene_labels[:,0]]
         scene_metadata = np.c_[scene_names, camera_names, scene_labels[:,1:]]
 
-        # Remove camera views annotated as 'BAD' or 'OUTSIDE' in metadata file
+        # Remove camera views annotated with 'OUTSIDE' in metadata file
+        # (these have been removed form the online dataset, files no longer exist)
         remove = []
         for i, s in enumerate(scene_metadata[:,2]):
             if 'OUTSIDE' in s:
                 remove.append(i)
         scene_metadata_clean = np.delete(scene_metadata, np.array(remove), axis=0)
+
+        # Assign integer to each scene label
+        scene_ids = np.zeros_like(scene_metadata_clean[:,0], dtype=int)
+        for i, y_scene in enumerate(scene_metadata_clean[:,2]):
+            y_id = np.where(np.unique(scene_metadata_clean[:,2]) == y_scene)
+            scene_ids[i] = y_id[0]
+        scene_metadata_clean = np.concatenate((scene_metadata_clean, scene_ids[:, np.newaxis]), axis=1)
 
         # Remove duplicate scene annotations (different cameras within the same scene still have same label)
         remove = []
@@ -150,17 +157,9 @@ class HypersimDataset(Dataset):
             else:
                 scene = row[0]
         scene_metadata_clean_nocam = np.delete(scene_metadata_clean, np.array(remove), axis=0)
-        scenes = scene_metadata_clean_nocam[:,0]
 
-        # Assign integer to each scene label (instead of string)
-        scene_ids = np.zeros_like(scenes, dtype=int)
-        for i, y_scene in enumerate(scene_metadata_clean_nocam[:,2]):
-            y_id = np.where(np.unique(scene_metadata_clean_nocam[:,2]) == y_scene)
-            scene_ids[i] = y_id[0]
-
-        scene_metadata_clean_nocam_y = np.concatenate((scene_metadata_clean_nocam, scene_ids[:, np.newaxis]), axis=1)
-        y = torch.tensor(scene_metadata_clean_nocam_y[:,4].astype(int))
-        return y, scene_metadata_clean_nocam_y
+        y = torch.tensor(scene_metadata_clean_nocam[:,4].astype(int))
+        return y, scene_metadata_clean_nocam, scene_metadata_clean
     
     def _assign_labels(self, mesh_objects_sii, mesh_objects_si, bb_pos):
         bb_labels = []
@@ -196,11 +195,11 @@ class HypersimDataset(Dataset):
         return distance_mask
     
     def _construct_adjacency_matrix(self, n_bb, bb_in_sample, distance_mask):    
-        temp = arange(1, n_bb+1)
+        temp = np.arange(1, n_bb+1)
         bb_not_in_sample = np.delete(temp, bb_in_sample - np.ones(len(bb_in_sample), dtype=int))
         index = bb_not_in_sample - np.ones(len(bb_not_in_sample), dtype=int)
         
-        adjacency_matrix = copy(distance_mask)
+        adjacency_matrix = np.copy(distance_mask)
         adjacency_matrix[index,:] = np.zeros((len(bb_not_in_sample), n_bb))
         adjacency_matrix[:, index] = np.zeros((n_bb, len(bb_not_in_sample)))
         return adjacency_matrix
@@ -219,7 +218,7 @@ class HypersimDataset(Dataset):
 
         with h5py.File(mesh_objects_si_dir, "r") as f: mesh_objects_si = f['dataset'][:]
         with h5py.File(mesh_objects_sii_dir, "r") as f: mesh_objects_sii = f['dataset'][:]
-        metadata_objects = genfromtxt(metadata_objects_dir, delimiter=None, dtype=str)
+        metadata_objects = np.genfromtxt(metadata_objects_dir, delimiter=None, dtype=str)
 
         with open(a2m_dir, newline='') as csvfile:
             metadata_scene = list(csv.reader(csvfile))
@@ -242,18 +241,25 @@ class HypersimDataset(Dataset):
     def _is_valid(self, filename):
         data = torch.load(os.path.join(self.processed_dir, filename))
         y = data.y.item()
-        return y in [1, 2, 8, 11, 12, 18] # only keep scenes with frequency 20 or more
+        return y in self.classes
     
     def _update_label(self, data):
         old_label = data.y.item()
         new_label = self.class_mapping[old_label]
         data.y = torch.tensor([new_label], dtype=torch.long)
     
+    def _remove_weird(self):
+        pass
+    
     def len(self):
-        return 61936
+        if self.classes:
+            length = len(self.graphs)
+        else:
+            length = 61936
+        return length
     
     def get(self, idx):
-        if self.ignore_rare:
+        if self.classes:
             filename = self.graphs[idx]
             data = torch.load(os.path.join(self.processed_dir, filename))
             self._update_label(data)
