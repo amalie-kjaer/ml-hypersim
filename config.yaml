@@ -7,7 +7,7 @@ dataset_type: dataset_small_balanced
 # Dataset_small:
 classes: 1, 2, 8, 11, 12, 18
 # Dataset_small_balanced:
-samples_per_class: 10
+samples_per_class: 1
 
 [datamodule]
 batch_size: 64

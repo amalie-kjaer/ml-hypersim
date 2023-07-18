@@ -7,16 +7,11 @@ import wandb
 import torch
 import torch.optim as optim
 import torch.nn as nn
-from configparser import ConfigParser
 from tqdm import tqdm
 from torch_geometric.loader import DataLoader
 from dataset import HypersimDataset
-from model import GCN
-
-def load_config():
-    config = ConfigParser()
-    config.read('./config.yaml')
-    return config
+from model import *
+from utils import *
 
 def load_dataset_full():
     dataset = HypersimDataset(root='./')
@@ -89,10 +84,7 @@ def train_model():
     # Initialize wandb
     if eval(config['wandb']['log']) == True:
         wandb.init(project=config['wandb']['project_name'], name=config['wandb']['run_name'])
-        config_file = './config.yaml'
-        with open(config_file, 'r') as file:
-            config_wandb = yaml.safe_load(file)
-        wandb.config.update(config_wandb)
+        wandb.config.update(config)
 
     # Load dataset specified in config
     train_dataset_type = config['dataset']['dataset_type']

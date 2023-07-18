@@ -18,3 +18,6 @@ contrib/mikeroberts3000/python/libVRaySDKLibrary.dylib
 contrib/mikeroberts3000/python/plugins
 contrib/99991/downloads
 processed
+processed.zip
+wandb
+notebooks/dataset_class.ipynb

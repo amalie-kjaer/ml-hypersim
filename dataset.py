@@ -7,9 +7,11 @@ import torch
 from scipy.spatial import distance
 from tqdm import tqdm
 from torch_geometric.data import Dataset, Data
+from utils import *
 
 class HypersimDataset(Dataset):
     def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, classes=False, presaved_graphs=None):
+        self.config = load_config()
         self.nyu_labels = np.genfromtxt(os.path.join("code", "cpp", "tools", "scene_annotation_tool", "semantic_label_descs.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)
         self.y_labels, self.scene_metadata, self.scene_metadata_w_cams = self._get_y()
         self.scene_names = np.unique(self.scene_metadata[:,2])        
@@ -29,7 +31,7 @@ class HypersimDataset(Dataset):
 
     @property
     def raw_file_names(self):
-        download_dir = r".\contrib\99991\downloads"
+        download_dir = self.config['path']['download_path']
         scenes = [x[-10:] for x in glob.glob(download_dir + "/*")]
         return scenes
 
@@ -43,7 +45,7 @@ class HypersimDataset(Dataset):
     def process(self):
         idx = 0
 
-        download_dir = r".\contrib\99991\downloads"
+        download_dir = self.config['path']['download_path']
 
         csv_path = os.path.join(self.processed_dir, 'data_info.csv')
         with open(csv_path, 'w', newline='') as csvfile:
@@ -268,4 +270,4 @@ class HypersimDataset(Dataset):
         return data
 
 if __name__ == "__main__":
-    dataset = HypersimDataset(r'C:\Users\amali\Documents\ds_research\ml-hypersim')
+    dataset = HypersimDataset('./')
