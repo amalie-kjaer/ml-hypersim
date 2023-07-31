@@ -18,7 +18,7 @@ def load_dataset_full():
     return dataset
 
 def load_dataset_small(config):
-    file = './graphs.json'
+    file = './checkpoints/graphs.json'
     classes = [int(x) for x in config['dataset']['classes'].split(',')]
     if os.path.isfile(file):
         with open(file, 'r') as f:
@@ -37,7 +37,7 @@ def load_dataset_small_balanced(config):
     # Construct dict of keys: class label, values: idx
     # (Ensures equal number of random samples in each class of dataset_small
     # i.e. creates a balanced dataset.)
-    file = './class_indices_dict.json'
+    file = './checkpoints/class_indices_dict.json'
     if  os.path.isfile(file):
         with open(file, 'r') as f:
             class_indices_dict = json.load(f)
