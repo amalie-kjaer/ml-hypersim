@@ -5,8 +5,9 @@
 If you're using Anaconda, you can install all of the required Python libraries using our `requirements.txt` file.
 
 ```
-conda create --name hypersim-env --file requirements.txt
-conda activate hypersim-env
+conda create --name ds --file requirements.txt
+conda activate ds
+conda install pyg -c pyg
 ```
 
 ## Downloading the processed Hypersim dataset
