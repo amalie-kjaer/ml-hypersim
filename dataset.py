@@ -15,7 +15,6 @@ class HypersimDataset(Dataset):
         self.nyu_labels = np.genfromtxt(os.path.join("code", "cpp", "tools", "scene_annotation_tool", "semantic_label_descs.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)
         self.y_labels, self.scene_metadata, self.scene_metadata_w_cams = self._get_y()
         self.scene_names = np.unique(self.scene_metadata[:,2])
-        self.processed_dir = self.config['path']['processed_path']
 
         if classes:
 
@@ -210,16 +209,13 @@ class HypersimDataset(Dataset):
 
     def _import_scene(self, scene_name, scene_dir):
         detail_dir = os.path.join(scene_dir, "_detail")
-
         bb_pos_dir = os.path.join(detail_dir, "mesh", "metadata_semantic_instance_bounding_box_object_aligned_2d_positions.hdf5")
-
         mesh_objects_si_dir = os.path.join("evermotion_dataset", "scenes", scene_name, "_detail", "mesh", "mesh_objects_si.hdf5")
         mesh_objects_sii_dir = os.path.join("evermotion_dataset", "scenes", scene_name, "_detail", "mesh", "mesh_objects_sii.hdf5")
         metadata_objects_dir = os.path.join("evermotion_dataset", "scenes", scene_name, "_detail", "mesh", "metadata_objects.csv")
         a2m_dir = os.path.join(detail_dir, "metadata_scene.csv")
 
         with h5py.File(bb_pos_dir, "r") as f: bb_pos = f['dataset'][:]
-
         with h5py.File(mesh_objects_si_dir, "r") as f: mesh_objects_si = f['dataset'][:]
         with h5py.File(mesh_objects_sii_dir, "r") as f: mesh_objects_sii = f['dataset'][:]
         metadata_objects = np.genfromtxt(metadata_objects_dir, delimiter=None, dtype=str)
