@@ -1,8 +1,6 @@
-# Research in Data Science: Graph Neural Networks for Scene Understanding
+# Research in DS: Graph Neural Networks for Scene Understanding
 
 ## Setting up the environment
-
-If you're using Anaconda, you can install all of the required Python libraries using our `requirements.txt` file.
 
 ```
 conda create --name ds --file requirements.txt
@@ -12,19 +10,8 @@ conda install pyg -c pyg
 
 ## Downloading the processed Hypersim dataset
 
-To obtain our image dataset, you can run the following download script. On Windows, you'll need to modify the script so it doesn't depend on the `curl` and `unzip` command-line utilities.
+Download the processed dataset from https://polybox.ethz.ch/index.php/s/UEWtvTF67ycntGP and extract to main folder.
 
-```
-python code/python/tools/dataset_download_images.py --downloads_dir /Volumes/portable_hard_drive/downloads --decompress_dir /Volumes/portable_hard_drive/evermotion_dataset/scenes
-```
-
-Note that our dataset is roughly 1.9TB. We have partitioned the dataset into a few hundred separate ZIP files, where each ZIP file is between 1GB and 20GB. Our [download script](code/python/tools/dataset_download_images.py) contains the URLs for each ZIP file. [Thomas Germer](https://github.com/99991) has generously contributed an [alternative download script](contrib/99991) that can be used to download subsets of files from within each ZIP archive.
-
-Note also that we manually excluded images containing people and prominent logos from our public release, and therefore our public release contains 74,619 images, rather than 77,400 images. We list all the images we manually excluded in `ml-hypersim/evermotion_dataset/analysis/metadata_images.csv`.
-
-To obtain the ground truth triangle meshes for each scene, you must purchase the asset files [here](https://www.turbosquid.com/Search/3D-Models?include_artist=evermotion).
-
-&nbsp;
 
 ## Working with the raw Hypersim dataset
 
