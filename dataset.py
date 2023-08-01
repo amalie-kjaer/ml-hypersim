@@ -25,7 +25,7 @@ class HypersimDataset(Dataset):
                 self.graphs = [f'data_{idx}.pt' for idx in range(self.len())]
                 self.graphs = [graph for graph in self.graphs if self._is_valid(graph)]
 
-            self.class_mapping = {class_id: index for index, class_id in enumerate(classes)}
+            self.class_mapping = {class_id: index for index, class_id in enumerate(classes)} # map the selected classes to the 0-num.classes range
         
         super().__init__(root, transform, pre_transform, pre_filter)
 
