@@ -273,7 +273,7 @@ class HypersimDataset(Dataset):
             length = len(self.graphs)
             # length = 58486 #TODO: fix
         else:
-            length = 59916 #TODO: fix
+            length = 58486 #TODO: fix
         return length
     
     def get(self, idx):
