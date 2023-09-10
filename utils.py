@@ -3,11 +3,15 @@ import json
 import pandas as pd
 import os
 import numpy as np
+import glob
+import io
 from configparser import ConfigParser
 from matplotlib import pyplot as plt
 import matplotlib.image as mpimg
 import networkx as nx
 from torch_geometric.utils.convert import to_networkx
+import wandb
+from PIL import Image
 
 def load_config():
     config = ConfigParser()
@@ -58,7 +62,7 @@ def world2screen_proj(p_world, camera_pos, camera_rot, height_pixels, width_pixe
     
     return p_screen
 
-def visualize_graph(dataset, idx):
+def visualize_graph(dataset, idx, display=False):
     config = load_config()
     
     # Print which data_idx.pt sample is plotted (idx is different for full and small datasets)
@@ -77,15 +81,23 @@ def visualize_graph(dataset, idx):
     data = temp.to_numpy()
     scene_name = data[old_i][1]
     camera_name = data[old_i][2]
-    frame_no = data[old_i][3]
+    frame_idx = data[old_i][3]
+    
+    # Get current frame number (different from frame idx as some frames are missing)
+    download_dir = config['path']['download_path']
+    scene_dir = os.path.join(download_dir, scene_name)
+    images_dir = os.path.join(scene_dir, "images")
+    tonemaps_dir = os.path.join(images_dir, "scene_" + camera_name + "_final_preview")
+    frames_in_folder = [int(os.path.basename(f).split('.')[1]) for f in glob.glob(os.path.join(tonemaps_dir, '*'))]
+    current_frame = frames_in_folder[frame_idx]
 
     # Plot corresponding image
-    download_dir = config['path']['download_path']
-    tonemap_dir = os.path.join(download_dir, scene_name, "images", f"scene_{camera_name}_final_preview", f"frame.{frame_no:04d}.tonemap.jpg")
+    tonemap_dir = os.path.join(download_dir, scene_name, "images", f"scene_{camera_name}_final_preview", f"frame.{current_frame:04d}.tonemap.jpg")
     tonemap = mpimg.imread(tonemap_dir)
     y_lim, x_lim = tonemap.shape[:-1]
     extent = 0, x_lim, 0, y_lim
     fig = plt.figure(figsize=(10,10))
+    plt.axis('off')
     plt.imshow(tonemap, extent=extent, interpolation='nearest')
 
     # Load 3D positions of bounding boxes in the scene
@@ -95,12 +107,45 @@ def visualize_graph(dataset, idx):
     # Load segmentation .hdf5 files
     # and determine which bounding boxes from the scene are present in the frame
     geometry_files_dir = os.path.join(download_dir, scene_name, "images/scene_" + camera_name + "_geometry_hdf5")
-    segmentation_file = f'frame.{frame_no:04d}.semantic_instance.hdf5'
+    segmentation_file = f'frame.{current_frame:04d}.semantic_instance.hdf5'
     segmentation_dir =  os.path.join(geometry_files_dir, segmentation_file)
     with h5py.File(segmentation_dir, "r") as f: segmentation = f['dataset'][:]
 
     bb_in_sample = np.unique(segmentation)
     if bb_in_sample[0] == -1: bb_in_sample = bb_in_sample[1:] # Discard -1 label (pixels in segmentation map with unidentified BB)
+
+    if eval(config['dataset']['remove_no_nyu']):
+        n_bb = bb_pos.shape[0]-1
+        mesh_objects_si_dir = os.path.join("evermotion_dataset", "scenes", scene_name, "_detail", "mesh", "mesh_objects_si.hdf5")
+        mesh_objects_sii_dir = os.path.join("evermotion_dataset", "scenes", scene_name, "_detail", "mesh", "mesh_objects_sii.hdf5")
+        with h5py.File(mesh_objects_si_dir, "r") as f: mesh_objects_si = f['dataset'][:]
+        with h5py.File(mesh_objects_sii_dir, "r") as f: mesh_objects_sii = f['dataset'][:]
+
+        # Define no_nyu
+        no_nyu = []
+        bb_labels = []
+        for i in range(n_bb):
+            lowlvl_instances_in_current_bb = np.where(mesh_objects_sii == i+1)[0]
+            if lowlvl_instances_in_current_bb.size > 0:
+                nyu_id = mesh_objects_si[lowlvl_instances_in_current_bb[0]]
+                if nyu_id == 40 or nyu_id == 39 or nyu_id == -1 or nyu_id == 23:
+                    no_nyu.append(i+1)
+                bb_labels.append(nyu_id)
+            else:
+                bb_labels.append(np.array([-1], dtype=np.int64))
+
+        # Remove no_nyu
+        temp = np.arange(1, n_bb+1)
+        bb_not_in_sample = np.delete(temp, bb_in_sample - np.ones(len(bb_in_sample), dtype=int))
+
+        bb_not_in_sample = bb_not_in_sample.tolist()
+        for i in range(len(no_nyu)):
+            if no_nyu[i] not in bb_not_in_sample:
+                bb_not_in_sample.append(no_nyu[i])
+        bb_not_in_sample.sort()
+        bb_not_in_sample = np.array(bb_not_in_sample)
+
+        bb_in_sample = np.delete(temp.astype(int), bb_not_in_sample.astype(int) - np.ones(len(bb_not_in_sample), dtype=int)).astype(int)
 
     # Load camera rotations and translations, and select relevant transform
     camera_pos_dir = os.path.join(download_dir, scene_name, "_detail", camera_name, "camera_keyframe_positions.hdf5")
@@ -108,8 +153,8 @@ def visualize_graph(dataset, idx):
     with h5py.File(camera_pos_dir, "r") as f: camera_pos_all = f['dataset'][:]
     with h5py.File(camera_rot_dir, "r") as f: camera_rot_all = f['dataset'][:]
 
-    camera_pos = camera_pos_all[frame_no]
-    camera_rot = camera_rot_all[frame_no]
+    camera_pos = camera_pos_all[current_frame]
+    camera_rot = camera_rot_all[current_frame]
     height_pixels = y_lim
     width_pixels = x_lim
 
@@ -135,13 +180,31 @@ def visualize_graph(dataset, idx):
     # Construct labels for plotting
     semantic_dict = {row[0]: row[1] for row in dataset.nyu_labels[1:]}
     semantic_dict['-1'] = 'n/a'
-    custom_labels_dict = {j: semantic_dict[str(label.item())] for j, label in enumerate(dataset[idx].x)}
+    custom_labels_dict = {j: semantic_dict[str(label.item())] for j, label in enumerate(dataset[idx][0].x)}
     nodes_to_remove = {'otherprop', 'otherfurniture', 'otherstructure'} # not plotting 'other' node labels to avoid clutter
     selected_labels_dict = {node: label for node, label in custom_labels_dict.items() if label not in nodes_to_remove}
 
     # Plot graph on top of image
-    vis = to_networkx(dataset[idx])
-    nx.draw_networkx(vis, pos=bb_pos_nodes, node_size=10, width=0.1, with_labels=True, labels=selected_labels_dict, font_color='red', edge_color='white')
-    plt.show()
+    vis = to_networkx(dataset[idx][0])
+    nx.draw_networkx(vis, pos=bb_pos_nodes, node_size=10, width=0.5, with_labels=True, labels=selected_labels_dict, font_color='red', edge_color='white')
+    # nx.draw_networkx(vis, pos=bb_pos_nodes, node_size=10, width=0.1, edge_color='white')
+    classes = [int(c) for c in config['dataset']['classes'].split(',')]
+    plt.title(dataset.scene_names[classes][dataset[idx][0].y.item()])
+    plt.axis('off')
+    
+    image_buffer = io.BytesIO()
+    plt.savefig(image_buffer, format='png', pad_inches=0)
+    
+    if display == True:
+        plt.show()
+    
+    plt.close()
+    image_data = image_buffer.getvalue()
 
-    return None
+    return image_data
+
+def log_visualization_wandb(dataset, idx, caption):
+    image_data = visualize_graph(dataset, idx)
+    image = Image.open(io.BytesIO(image_data))
+    image_array = np.array(image)
+    return wandb.Image(image_array, caption=caption)

@@ -11,14 +11,15 @@ from utils import *
 
 class HypersimDataset(Dataset):
     def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, classes=False, presaved_graphs=None):
+        self.root = root
         self.config = load_config()
         self.nyu_labels = np.genfromtxt(os.path.join("code", "cpp", "tools", "scene_annotation_tool", "semantic_label_descs.csv"), delimiter=',', dtype=None, encoding=None, autostrip=True)
         self.y_labels, self.scene_metadata, self.scene_metadata_w_cams = self._get_y()
         self.scene_names = np.unique(self.scene_metadata[:,2])
+        self.remove_no_nyu = eval(self.config['dataset']['remove_no_nyu'])
+        self.classes = classes
 
-        if classes:
-
-            self.classes = classes
+        if classes:          
             if presaved_graphs:
                 self.graphs = presaved_graphs
             else:
@@ -59,22 +60,23 @@ class HypersimDataset(Dataset):
             scene_dir = os.path.join(download_dir, scene_name)
             images_dir = os.path.join(scene_dir, "images")
             detail_dir = os.path.join(scene_dir, "_detail")
-            n_cams = len(glob.glob(detail_dir + "/*/"))-1
-            camera_names = ["cam_0" + str(n) for n in np.arange(n_cams)]
+            n_cams = len(glob.glob(detail_dir + "/*/"))-1 #TODO: list all files that contain "cam"
+            camera_names = ["cam_0" + str(n) for n in np.arange(n_cams)] #TODO: all cameras might not be present
 
             try:
                 bb_pos, mesh_objects_si, mesh_objects_sii, metadata_objects, a2m = self._import_scene(scene_name, scene_dir)
             except:
+                print(f'Scene {scene_name} could not be loaded.')
                 continue
             n_bb = bb_pos.shape[0] - 1
-            bb_labels, bb_error = self._assign_labels(mesh_objects_sii, mesh_objects_si, metadata_objects, self.nyu_labels, bb_pos)
+            bb_labels, bb_error, no_nyu = self._assign_labels(mesh_objects_sii, mesh_objects_si, bb_pos)
             
             for camera_name in camera_names:
                 geometry_files_dir = os.path.join(images_dir, "scene_" + camera_name + "_geometry_hdf5")                
 
                 segmentation_files_dir = os.path.join(images_dir, "scene_" + camera_name + "_geometry_hdf5", "frame.*.semantic_instance.hdf5")
                 filenames_segmentation = [ os.path.basename(f) for f in np.sort(glob.glob(segmentation_files_dir)) ]
-                n_frames = len(filenames_segmentation)
+                n_frames = len(filenames_segmentation) #TODO: get frame name + frame ID
 
                 threshold = 1.5
                 distance_mask = self._calculate_distance(threshold, a2m, bb_pos, bb_error)
@@ -86,6 +88,7 @@ class HypersimDataset(Dataset):
                     try:
                         segmentation = self._import_frame(segmentation_dir)
                     except:
+                        print(f'{segmentation_dir} could not be loaded')
                         continue
 
                     # Select BB that are present in current frame
@@ -94,14 +97,14 @@ class HypersimDataset(Dataset):
                         bb_in_sample = bb_in_sample[1:] # discard -1 label (pixels in segmentation map with unidentified BB)
 
                     # Construct adjacency matrix
-                    adjacency_matrix = self._construct_adjacency_matrix(n_bb, bb_in_sample, distance_mask)
+                    adjacency_matrix, bb_not_in_sample = self._construct_adjacency_matrix(n_bb, bb_in_sample, distance_mask, no_nyu)
 
                     # Transform adjacency matrix to adjacency list in COO format
                     row, col = np.where(adjacency_matrix)
                     edge_index_np = np.array(list(zip(row, col)))
                     
                     # Filter out graphs that have 0 edges (either because no objects detected or objects far apart)
-                    if edge_index_np.size > 0:
+                    if edge_index_np.size > 0: #TODO: can use a if size<0 assert or continue
 
                         nodes_present = np.unique(edge_index_np) # refers to BB number, indexing starts at 0
                         new_idx = []
@@ -112,7 +115,9 @@ class HypersimDataset(Dataset):
                         edge_index = torch.tensor(np.array(new_idx)).t()
                         
                         # Transform bb_labels to node features (tensor matrix with shape [num_nodes, num_node_features])
-                        bb_labels_in_sample = np.array([bb_labels[i-1] for i in bb_in_sample]) # indexing starts at 0
+                        temp = np.arange(1, n_bb + 1)
+                        bb_in_sample_nodes = np.delete(temp.astype(int), bb_not_in_sample.astype(int) - np.ones(len(bb_not_in_sample), dtype=int)).astype(int)
+                        bb_labels_in_sample = np.array([bb_labels[i-1] for i in bb_in_sample_nodes]) # indexing starts at 0
                         x = torch.tensor(np.array(bb_labels_in_sample)) # indexing starts at 0
 
                         # Get relevant graph label
@@ -166,20 +171,33 @@ class HypersimDataset(Dataset):
     
     def _assign_labels(self, mesh_objects_sii, mesh_objects_si, bb_pos):
         bb_labels = []
-        bb_error = []
+        bb_error = [] #TODO: find better solution
+        no_nyu = []
         n_bb = bb_pos.shape[0] - 1
 
         for i in range(n_bb):
             lowlvl_instances_in_current_bb = np.where(mesh_objects_sii == i+1)[0]
             if lowlvl_instances_in_current_bb.size > 0:
                 nyu_id = mesh_objects_si[lowlvl_instances_in_current_bb[0]]
+                if nyu_id == 40 or nyu_id == 39 or nyu_id == 38 or nyu_id == -1 or nyu_id == 23:
+                    no_nyu.append(i+1)
                 bb_labels.append(nyu_id)
             else:
+                # print(f'BB {i+1} does not exist.') #TODO: assert instead
                 bb_error.append(i+1)
-                bb_labels.append(np.array([-1], dtype=int64))
+                bb_labels.append(np.array([-1], dtype=np.int64))
         
-        return bb_labels, bb_error
+        return bb_labels, bb_error, no_nyu
     
+    def _remove_no_nyu(self, bb_not_in_sample, no_nyu):
+        bb_not_in_sample = bb_not_in_sample.tolist()
+        for i in range(len(no_nyu)):
+            if no_nyu[i] not in bb_not_in_sample:
+                bb_not_in_sample.append(no_nyu[i])
+        bb_not_in_sample.sort()
+        bb_not_in_sample = np.array(bb_not_in_sample)
+        return bb_not_in_sample
+
     def _calculate_distance(self, threshold, a2m, bb_pos, bb_error):
         n_bb = bb_pos.shape[0] - 1
         bb_pos_m = bb_pos*a2m
@@ -197,15 +215,17 @@ class HypersimDataset(Dataset):
         
         return distance_mask
     
-    def _construct_adjacency_matrix(self, n_bb, bb_in_sample, distance_mask):    
+    def _construct_adjacency_matrix(self, n_bb, bb_in_sample, distance_mask, no_nyu):    
         temp = np.arange(1, n_bb+1)
         bb_not_in_sample = np.delete(temp, bb_in_sample - np.ones(len(bb_in_sample), dtype=int))
-        index = bb_not_in_sample - np.ones(len(bb_not_in_sample), dtype=int)
+        if self.remove_no_nyu:
+            bb_not_in_sample = self._remove_no_nyu(bb_not_in_sample, no_nyu)
+        index = (bb_not_in_sample - np.ones(len(bb_not_in_sample), dtype=int)).astype(int)
         
         adjacency_matrix = np.copy(distance_mask)
         adjacency_matrix[index,:] = np.zeros((len(bb_not_in_sample), n_bb))
         adjacency_matrix[:, index] = np.zeros((n_bb, len(bb_not_in_sample)))
-        return adjacency_matrix
+        return adjacency_matrix, bb_not_in_sample
 
     def _import_scene(self, scene_name, scene_dir):
         detail_dir = os.path.join(scene_dir, "_detail")
@@ -247,15 +267,13 @@ class HypersimDataset(Dataset):
         old_label = data.y.item()
         new_label = self.class_mapping[old_label]
         data.y = torch.tensor([new_label], dtype=torch.long)
-    
-    def _remove_weird(self):
-        pass
-    
+       
     def len(self):
         if self.classes:
             length = len(self.graphs)
+            # length = 58486 #TODO: fix
         else:
-            length = 61936
+            length = 59916 #TODO: fix
         return length
     
     def get(self, idx):
@@ -263,9 +281,11 @@ class HypersimDataset(Dataset):
             filename = self.graphs[idx]
             data = torch.load(os.path.join(self.processed_dir, filename))
             self._update_label(data)
+            index = list(range(len(self.graphs)))[idx]
         else:
             data = torch.load(os.path.join(self.processed_dir, f'data_{idx}.pt'))
-        return data
+            index = list(range(61936))[idx] #TODO: fix
+        return data, index
 
 if __name__ == "__main__":
     dataset = HypersimDataset('./')

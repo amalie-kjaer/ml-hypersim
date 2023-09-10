@@ -8,24 +8,33 @@ dataset_type: dataset_small_balanced
 # Dataset_small:
 classes: 1, 2, 8, 11, 12, 18
 # Dataset_small_balanced:
-samples_per_class: 1
+samples_per_class: 170
+remove_no_nyu: True
 
 [datamodule]
 batch_size: 64
 num_workers: 1
 
 [model]
-model_name_help: GCN
+model_name_help: GCN, GNN, GCN_GNN
+optimizer_help: Adam, SGD
 model_name: GCN
 hidden_channels: 16
+
 optimizer: Adam
+# For SGD:
 lr: 0.01
+sgd_momentum: 0.8
+weight_decay: 0.001
+scheduler_gamma: 0.9
+
 criterion: CrossEntropyLoss
 
 [trainer]
-epochs: 10
+epochs: 1000
 
 [wandb]
-log: False
-project_name: ml_hypersim
-run_name: test000
+log: True
+plot_inputs: False
+project_name: ml-hypersim
+run_name:   GCN_3conv_16h_1020x_NEWNEWDATASET
