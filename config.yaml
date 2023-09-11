@@ -16,31 +16,31 @@ batch_size: 64
 num_workers: 1
 
 [model]
-model_name_help: GCN, CustomGCN
-optimizer_help: Adam, SGD
+model_name_help: CustomGCN, GIN
+optimizer_help: Adam, SGD, AdamW
 
 # Model
-model_name: CustomGCN
-hidden_channels: 16
+model_name: GIN
+hidden_channels: 20
 num_layers: 3
-dropout: 0.2
+dropout: 0.5
 
 # Optimizer
 optimizer: Adam
 # For SGD:
-lr: 0.01
+lr: 0.001
 sgd_momentum: 0.8
-weight_decay: 0.001
+weight_decay: 0
 scheduler_gamma: 0.9
 
 # Loss function
 criterion: CrossEntropyLoss
 
 [trainer]
-epochs: 100
+epochs: 200
 
 [wandb]
 log: True
 plot_inputs: False
 project_name: ml-hypersim-report
-run_name: GCN_3conv_16h_d02_1000x6x_NEWDATASET
+run_name: GIN_3conv_20h_d05_1000x6x_lr0001_NEWDATASET_SOFTMAX

@@ -68,7 +68,8 @@ def train_one_epoch(train_loader, model, optimizer, criterion, config):
     model.train()
     for data in train_loader: 
         optimizer.zero_grad()
-        out, _ = model(data[0].x.float(), data[0].edge_index.type(torch.long), data[0].batch.type(torch.long))
+        # out, _ = model(data[0].x.float(), data[0].edge_index.type(torch.long), data[0].batch.type(torch.long))
+        _, out = model(data[0].x.float(), data[0].edge_index.type(torch.long), data[0].batch.type(torch.long)) # CHANGE BACK
         loss = criterion(out, data[0].y.type(torch.long))
         loss.backward()
         optimizer.step()
@@ -91,8 +92,8 @@ def test_model(loader, model):
         shuffled_idx.extend(data[1].tolist())
     return correct / len(loader.dataset), true_labels, predicted_labels, shuffled_idx
 
-def train_model():
-    config = load_config()
+def train_model(config_path):
+    config = load_config(config_path)
 
     # Load dataset specified in config
     dataset_type = config['dataset']['dataset_type']
@@ -109,12 +110,16 @@ def train_model():
     train_loader = DataLoader(train_dataset, batch_size=int(config['datamodule']['batch_size']), shuffle=True, drop_last=False)
     test_loader = DataLoader(test_dataset, batch_size=int(config['datamodule']['batch_size']), shuffle=False, drop_last=False)
 
-    model_name = config['model']['model_name']
-    model = globals()[model_name](feature_size=1, hidden_channels=int(config['model']['hidden_channels']),  num_layers=int(config['model']['num_layers']),
-                                  dropout_rate=float(config['model']['dropout'])) #TODO change feature_size
+    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # print(f"Using device: {device}")
+    # model_name = config['model']['model_name']
+    # model = globals()[model_name](feature_size=1, hidden_channels=int(config['model']['hidden_channels']),  num_layers=int(config['model']['num_layers']),
+    #                               dropout_rate=float(config['model']['dropout'])) #TODO change feature_size
+    # model.to(device)
+    model = GIN(hidden_channels=int(config['model']['hidden_channels']))
 
     optimizer_name = config['model']['optimizer']
-    optimizer = getattr(optim, optimizer_name)(model.parameters(), lr=float(config['model']['lr']))
+    optimizer = getattr(optim, optimizer_name)(model.parameters(), lr=float(config['model']['lr']), weight_decay=float(config['model']['weight_decay']))
 
     criterion_name = config['model']['criterion']
     criterion = getattr(nn, criterion_name)()
@@ -140,6 +145,7 @@ def train_model():
     # Train model for {num_epochs} epochs
     for epoch in range (num_epochs):
         train_one_epoch(train_loader, model, optimizer, criterion, config)
+        # scheduler.step()
         train_acc, true_labels, predicted_labels, _ = test_model(train_loader, model)
         test_acc, true_labels_test, predicted_labels_test, _ = test_model(test_loader, model)
         print(f'Epoch: {epoch:03d}, Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}')
@@ -177,5 +183,9 @@ def train_model():
 
     if eval(config['wandb']['log']) == True:
         wandb.finish()
+
+def ensemble_predictions(config_path):
+    config = load_config(config_path)
+    
 
     print("done")

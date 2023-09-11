@@ -13,9 +13,9 @@ from torch_geometric.utils.convert import to_networkx
 import wandb
 from PIL import Image
 
-def load_config():
+def load_config(config_path='./config.yaml'):
     config = ConfigParser()
-    config.read('./config.yaml')
+    config.read(config_path)
     return config
 
 def construct_M(height_pixels, width_pixels):
